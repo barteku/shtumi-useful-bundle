@@ -97,10 +97,6 @@ class EntityToSelect2ValueTransformer implements DataTransformerInterface
             return $entities;
         }else{
 
-            if (!is_numeric($id)) {
-                throw new UnexpectedTypeException($id, 'numeric' . $id);
-            }
-
             $entity = $this->em->getRepository($this->class)->findOneById($id);
 
             if ($entity === null) {
