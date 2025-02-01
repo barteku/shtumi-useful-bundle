@@ -173,15 +173,19 @@
                         return { results: data };
                     },
                 },
-                'multiple': {{ multiple }}
+                multiple: {{ multiple }}
             });
 
 
             var data = {{ value|raw }};
 
-            if(typeof(data.id) !== 'udefined')
-            {
-                var newOption = new Option(data.text, data.id, false, false);
+            if(Array.isArray(data)) {
+                $.each(data, function (k,el) {
+                    var newOption = new Option(el.text, el.id, true, true);
+                    jQuery("#{{ form.vars.id }}").append(newOption).trigger('change');
+                });
+            } else if(typeof data.id !== 'undefined'){
+                var newOption = new Option(data.text, data.id, true, true);
                 jQuery("#{{ form.vars.id }}").append(newOption).trigger('change');
             }
 
