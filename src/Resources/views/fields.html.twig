@@ -156,6 +156,10 @@
                 parent = jQuery('#'+parent_id+'_autocomplete_input');
             }
 
+            {% if multiple %}
+                jQuery("#{{ form.vars.id }}").attr('name', jQuery("#{{ form.vars.id }}").attr('name') + '[]');
+            {% endif %}
+
             jQuery("#{{ form.vars.id }}").select2({
                 placeholder: "{{ empty_value }}",
                 minimumInputLength: 0,

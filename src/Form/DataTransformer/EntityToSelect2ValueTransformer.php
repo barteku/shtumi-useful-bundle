@@ -53,8 +53,6 @@ class EntityToSelect2ValueTransformer implements DataTransformerInterface
                 return json_encode([]);
             }
         }else {
-
-
             if (null === $entity || '' === $entity || (is_array($entity) && count($entity) == 0)) {
                 return json_encode(array(
                     'id' => null,
@@ -86,7 +84,10 @@ class EntityToSelect2ValueTransformer implements DataTransformerInterface
         }
 
         if($this->multiple){
-            $ids = explode(',', $id);
+            $ids = $id;
+            if (is_string($id)) {
+                $ids = explode(',', $id);
+            }
 
             $entities = $this->em->getRepository($this->class)->findBy(['id' => $ids]);
 
