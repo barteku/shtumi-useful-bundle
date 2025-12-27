@@ -103,108 +103,44 @@
     <img src='{{ asset('bundles/shtumiuseful/images/ajax-loader.gif' ) }}' id='loader' style='display: none;'>
     <script type="text/javascript">
         jQuery(function(){
-            {# Function to find parent field - handles both direct parent and collection-embedded forms #}
-            function findParentField(currentFieldId, parentFieldName) {
-                var currentField = jQuery("select#" + currentFieldId);
-                if (currentField.length === 0) return null;
-                
-                {# Try direct parent first (for backward compatibility) #}
-                {% if form.parent is defined and form.parent[parent_field] is defined %}
-                    var directParentId = "{{ form.parent[parent_field].vars.id }}";
-                    if (jQuery("select#" + directParentId).length > 0) {
-                        return directParentId;
-                    }
-                {% endif %}
-                
-                {# Traverse up the form hierarchy to find the parent field #}
-                var formElement = currentField.closest('form');
-                if (formElement.length === 0) {
-                    formElement = currentField.closest('[data-prototype]').parent().closest('form');
-                }
-                
-                {# Try to find by name pattern - this works for collection-embedded forms #}
-                var currentName = currentField.attr('name');
-                
-                {# Extract the base path and find parent field at the same or higher level #}
-                if (currentName) {
-                    {# For collection items, the name looks like: form[collection][0][field] #}
-                    {# We need to find: form[collection][0][parent_field] or form[parent_field] #}
-                    var nameParts = currentName.match(/^([^\[]+)(\[.*?\])/);
-                    if (nameParts) {
-                        {# Try same level first (same collection item) #}
-                        var sameLevelName = nameParts[1] + nameParts[2].replace(/\[[^\]]+\]$/, '[' + parentFieldName + ']');
-                        var sameLevelField = formElement.find('select[name="' + sameLevelName + '"]');
-                        if (sameLevelField.length > 0) {
-                            return sameLevelField.attr('id');
+            {% if parent_field_view is defined and parent_field_view is not null %}
+                {% set parent_form = parent_field_view %}
+            {% else %}
+                {% set parent_form = form.parent.offsetGet( parent_field ) %}
+            {% endif %}
+
+            jQuery("#{{ parent_form.vars.id }}").change( function() {
+                var selected_index = {{ value ? value|json_encode|raw : 0 }};
+                jQuery("#loader").show();
+                jQuery.ajax({
+                    type: "POST",
+                    data: {
+                        parent_id: jQuery(this).val(),
+                        entity_alias: "{{ entity_alias }}",
+                        empty_value: "{{ empty_value }}"
+                    },
+                    url:"{{ path('shtumi_dependent_filtered_entity') }}",
+                    success: function(msg){
+                        if (msg != ''){
+                            jQuery("select#{{ form.vars.id }}").html(msg).show();
+                            jQuery.each(jQuery("select#{{ form.vars.id }} option"), function (index, option){
+                                if (jQuery(option).val() == selected_index)
+                                    jQuery(option).prop('selected', true);
+                            })
+                            jQuery("select#{{ form.vars.id }}").trigger('change');
+                            jQuery("#loader").hide();
+                        } else {
+                            jQuery("select#{{ form.vars.id }}").html('<em>{{ no_result_msg|trans() }}</em>');
+                            jQuery("#loader").hide();
                         }
-                        
-                        {# Try parent level (one level up in the hierarchy) #}
-                        var parentLevelName = nameParts[1] + '[' + parentFieldName + ']';
-                        var parentLevelField = formElement.find('select[name="' + parentLevelName + '"]');
-                        if (parentLevelField.length > 0) {
-                            return parentLevelField.attr('id');
-                        }
+                    },
+                    error: function(xhr, ajaxOptions, thrownError){
+                    jQuery('html').html(xhr.responseText);
                     }
-                }
-                
-                {# Fallback: search by ID pattern #}
-                var currentIdParts = currentFieldId.split('_');
-                {# Try removing last part and appending parent field name #}
-                for (var i = currentIdParts.length - 1; i >= 0; i--) {
-                    var testId = currentIdParts.slice(0, i).join('_') + '_' + parentFieldName;
-                    var testField = jQuery("select#" + testId);
-                    if (testField.length > 0) {
-                        return testId;
-                    }
-                }
-                
-                {# Last resort: search by name contains #}
-                var foundField = formElement.find('select[name*="' + parentFieldName + '"]').first();
-                if (foundField.length > 0) {
-                    return foundField.attr('id');
-                }
-                
-                return null;
-            }
-            
-            var currentFieldId = "{{ form.vars.id }}";
-            var parentFieldId = findParentField(currentFieldId, "{{ parent_field }}");
-            
-            if (parentFieldId && jQuery("select#" + parentFieldId).length > 0) {
-                jQuery("select#" + parentFieldId).change( function() {
-                    var selected_index = {{ value ? value|json_encode : 0 }};
-                    jQuery("#loader").show();
-                    jQuery.ajax({
-                        type: "POST",
-                        data: {
-                            parent_id: jQuery(this).val(),
-                            entity_alias: "{{ entity_alias }}",
-                            empty_value: "{{ empty_value }}"
-                        },
-                        url:"{{ path('shtumi_dependent_filtered_entity') }}",
-                        success: function(msg){
-                            if (msg != ''){
-                                jQuery("select#" + currentFieldId).html(msg).show();
-                                jQuery.each(jQuery("select#" + currentFieldId + " option"), function (index, option){
-                                    if (jQuery(option).val() == selected_index)
-                                        jQuery(option).prop('selected', true);
-                                })
-                                jQuery("select#" + currentFieldId).trigger('change');
-                                jQuery("#loader").hide();
-                            } else {
-                                jQuery("select#" + currentFieldId).html('<em>{{ no_result_msg|trans() }}</em>');
-                                jQuery("#loader").hide();
-                            }
-                        },
-                        error: function(xhr, ajaxOptions, thrownError){
-                        jQuery('html').html(xhr.responseText);
-                        }
-                    });
                 });
-                jQuery("select#" + parentFieldId).trigger('change');
-            } else {
-                console.warn('Parent field "{{ parent_field }}" not found for dependent filtered entity field "' + currentFieldId + '"');
-            }
+            });
+
+            jQuery("#{{ parent_form.vars.id }}").trigger('change');
         });
     </script>
 
@@ -216,21 +152,33 @@
 
     <script type="text/javascript">
         jQuery(function(){
+            // Wait for Select2 to be available (especially important in modals)
+            function initSelect2() {
+                if (typeof jQuery.fn.select2 === 'undefined') {
+                    setTimeout(initSelect2, 100);
+                    return;
+                }
+                
+                {% if parent_field_view is defined and parent_field_view is not null %}
+                    {% set parent_form = parent_field_view %}
+                {% else %}
+                    {% set parent_form = form.parent.offsetGet( parent_field ) %}
+                {% endif %}
 
-            var parent_id = "{{ form.parent.offsetGet( parent_field ).vars.id }}";
-            var parent = null;
+                var parent_id = "{{ parent_form.vars.id }}";
+                var parent = null;
 
-            if(jQuery('#'+parent_id).length){
-                parent = jQuery('#'+parent_id);
-            }else if(jQuery('#'+parent_id+'_autocomplete_input').length){
-                parent = jQuery('#'+parent_id+'_autocomplete_input');
-            }
+                if(jQuery('#'+parent_id).length){
+                    parent = jQuery('#'+parent_id);
+                }else if(jQuery('#'+parent_id+'_autocomplete_input').length){
+                    parent = jQuery('#'+parent_id+'_autocomplete_input');
+                }
 
-            {% if multiple %}
-                jQuery("#{{ form.vars.id }}").attr('name', jQuery("#{{ form.vars.id }}").attr('name') + '[]');
-            {% endif %}
+                {% if multiple %}
+                    jQuery("#{{ form.vars.id }}").attr('name', jQuery("#{{ form.vars.id }}").attr('name') + '[]');
+                {% endif %}
 
-            jQuery("#{{ form.vars.id }}").select2({
+                jQuery("#{{ form.vars.id }}").select2({
                 placeholder: "{{ empty_value }}",
                 minimumInputLength: 0,
                 ajax: {
@@ -246,26 +194,31 @@
                     processResults: function(data, page) {
                         return { results: data };
                     },
-                },
-                multiple: {{ multiple }}
-            });
-
-
-            var data = {{ value|raw }};
-
-            if(Array.isArray(data)) {
-                $.each(data, function (k,el) {
-                    var newOption = new Option(el.text, el.id, true, true);
-                    jQuery("#{{ form.vars.id }}").append(newOption).trigger('change');
+                    },
+                    multiple: '{{ multiple }}'
                 });
-            } else if(typeof data.id !== 'undefined'){
-                var newOption = new Option(data.text, data.id, true, true);
-                jQuery("#{{ form.vars.id }}").append(newOption).trigger('change');
-            }
 
-            parent.change(function(){
-                jQuery("#{{ form.vars.id }}").select2('data', null);
-            });
+
+                var data = {{ value|raw }};
+
+                if(Array.isArray(data)) {
+                    $.each(data, function (k,el) {
+                        var newOption = new Option(el.text, el.id, true, true);
+                        jQuery("#{{ form.vars.id }}").append(newOption).trigger('change');
+                    });
+                } else if(typeof data.id !== 'undefined'){
+                    var newOption = new Option(data.text, data.id, true, true);
+                    jQuery("#{{ form.vars.id }}").append(newOption).trigger('change');
+                }
+
+                if (parent && parent.length) {
+                    parent.change(function(){
+                        jQuery("#{{ form.vars.id }}").select2('data', null);
+                    });
+                }
+            }
+            
+            initSelect2();
         });
     </script>
 

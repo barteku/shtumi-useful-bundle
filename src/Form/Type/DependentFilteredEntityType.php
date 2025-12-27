@@ -68,6 +68,34 @@ class DependentFilteredEntityType extends AbstractType
         $view->vars['entity_alias'] = $form->getConfig()->getAttribute('entity_alias');
         $view->vars['no_result_msg'] = $form->getConfig()->getAttribute('no_result_msg');
         $view->vars['empty_value'] = $form->getConfig()->getAttribute('empty_value');
+        
+        // Find parent field in form hierarchy
+        $parentField = $form->getConfig()->getAttribute('parent_field');
+        if ($parentField) {
+            $parentFormView = $this->findParentFieldInHierarchy($view, $parentField);
+            $view->vars['parent_field_view'] = $parentFormView;
+        }
+    }
+    
+    /**
+     * Traverse up the form hierarchy to find the parent field
+     */
+    private function findParentFieldInHierarchy(FormView $view, $parentFieldName)
+    {
+        $current = $view;
+        
+        // Traverse up the form hierarchy
+        while (isset($current->parent) && $current->parent !== null) {
+            $current = $current->parent;
+            
+            // Check if the parent field exists in the current form level
+            if (isset($current->children) && isset($current->children[$parentFieldName])) {
+                return $current->children[$parentFieldName];
+            }
+        }
+        
+        // If not found, return null (will fall back to original behavior)
+        return null;
     }
 
 }

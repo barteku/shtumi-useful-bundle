@@ -74,7 +74,7 @@ class DependentFilteredEntityController extends AbstractController
         $results = $qb->getQuery()->getResult();
 
         if (empty($results)) {
-            return new Response('<option value="">' . $translator->trans($entity_inf['no_result_msg']) . '</option>');
+            return new Response('<option value="">' . $this->translator->trans($entity_inf['no_result_msg']) . '</option>');
         }
 
         $html = '';
