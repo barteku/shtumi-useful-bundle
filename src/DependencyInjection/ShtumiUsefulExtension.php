@@ -24,6 +24,7 @@ class ShtumiUsefulExtension extends Extension
 
         $container->setParameter('shtumi.autocomplete_entities', $config['autocomplete_entities']);
         $container->setParameter('shtumi.dependent_filtered_entities', $config['dependent_filtered_entities']);
+        $container->setParameter('shtumi.dependent_filtered_values', $config['dependent_filtered_values'] ?? []);
         $container->setParameter('shtumi.date_range', $config['date_range']);
 
 

@@ -103,13 +103,7 @@
     <img src='{{ asset('bundles/shtumiuseful/images/ajax-loader.gif' ) }}' id='loader' style='display: none;'>
     <script type="text/javascript">
         jQuery(function(){
-            {% if parent_field_view is defined and parent_field_view is not null %}
-                {% set parent_form = parent_field_view %}
-            {% else %}
-                {% set parent_form = form.parent.offsetGet( parent_field ) %}
-            {% endif %}
-
-            jQuery("#{{ parent_form.vars.id }}").change( function() {
+            jQuery("#{{ form.parent.offsetGet( parent_field ).vars.id }}").change( function() {
                 var selected_index = {{ value ? value|json_encode|raw : 0 }};
                 jQuery("#loader").show();
                 jQuery.ajax({
@@ -140,7 +134,7 @@
                 });
             });
 
-            jQuery("#{{ parent_form.vars.id }}").trigger('change');
+            jQuery("#{{ form.parent.offsetGet( parent_field ).vars.id }}").trigger('change');
         });
     </script>
 
@@ -179,21 +173,21 @@
                 {% endif %}
 
                 jQuery("#{{ form.vars.id }}").select2({
-                placeholder: "{{ empty_value }}",
-                minimumInputLength: 0,
-                ajax: {
-                    url: '{{ path('shtumi_dependent_filtered_select2') }}',
-                    dataType: 'json',
-                    data: function (term, page) {
-                        return {
-                            term: term,
-                            parent_id: parent.val(),
-                            entity_alias: "{{ entity_alias }}"
-                        };
-                    },
-                    processResults: function(data, page) {
-                        return { results: data };
-                    },
+                    placeholder: "{{ empty_value }}",
+                    minimumInputLength: 0,
+                    ajax: {
+                        url: '{{ path('shtumi_dependent_filtered_select2') }}',
+                        dataType: 'json',
+                        data: function (term, page) {
+                            return {
+                                term: term,
+                                parent_id: parent.val(),
+                                entity_alias: "{{ entity_alias }}"
+                            };
+                        },
+                        processResults: function(data, page) {
+                            return { results: data };
+                        },
                     },
                     multiple: '{{ multiple }}'
                 });
@@ -219,6 +213,62 @@
             }
             
             initSelect2();
+        });
+    </script>
+
+{% endblock %}
+
+{% block shtumi_dependent_filtered_value_widget %}
+
+    <input {{ block('widget_attributes') }} type="text" class="form-control">
+
+    <img src='{{ asset('bundles/shtumiuseful/images/ajax-loader.gif' ) }}' id='loader_{{ form.vars.id }}' style='display: none;'>
+    <script type="text/javascript">
+        jQuery(function(){
+            {% if parent_field_view is defined and parent_field_view is not null %}
+                {% set parent_form = parent_field_view %}
+            {% else %}
+                {% set parent_form = form.parent.offsetGet( parent_field ) %}
+            {% endif %}
+
+            var inputElement = jQuery("#{{ form.vars.id }}");
+            var loaderElement = jQuery("#loader_{{ form.vars.id }}");
+
+            jQuery("#{{ parent_form.vars.id }}").change( function() {
+                var parentValue = jQuery(this).val();
+                
+                if (!parentValue) {
+                    inputElement.val('');
+                    return;
+                }
+
+                loaderElement.show();
+                jQuery.ajax({
+                    type: "POST",
+                    data: {
+                        parent_id: parentValue,
+                        entity_alias: "{{ entity_alias }}"
+                    },
+                    url:"{{ path('shtumi_dependent_filtered_value') }}",
+                    success: function(response){
+                        if (response.value !== null && response.value !== undefined) {
+                            inputElement.val(response.value);
+                        } else {
+                            inputElement.val('');
+                        }
+                        loaderElement.hide();
+                    },
+                    error: function(xhr, ajaxOptions, thrownError){
+                        inputElement.val('');
+                        loaderElement.hide();
+                    }
+                });
+            });
+
+            // Trigger on page load if parent has a value
+            if (jQuery("#{{ parent_form.vars.id }}").val()) {
+                jQuery("#{{ parent_form.vars.id }}").trigger('change');
+            }
         });
     </script>
 

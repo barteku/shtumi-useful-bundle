@@ -24,4 +24,8 @@
         <default key="_controller">Shtumi\UsefulBundle\Controller\DependentFilteredEntityController::getJson</default>
     </route>
 
+    <route id="shtumi_dependent_filtered_value" path="/shtumi_dependent_filtered_value">
+        <default key="_controller">Shtumi\UsefulBundle\Controller\DependentFilteredEntityController::getSingleValue</default>
+    </route>
+
 </routes>

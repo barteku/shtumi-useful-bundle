@@ -30,12 +30,15 @@ class DependentFilteredEntityController extends AbstractController
 
     private $filteredEntities;
 
+    private $filteredValues;
+
 
     public function __construct(ManagerRegistry $em, TranslatorInterface $translator, ParameterBagInterface $parameterBag){
         $this->em = $em;
         $this->translator = $translator;
 
         $this->filteredEntities = $parameterBag->get('shtumi.dependent_filtered_entities');
+        $this->filteredValues = $parameterBag->get('shtumi.dependent_filtered_values');
     }
 
 
@@ -162,6 +165,61 @@ class DependentFilteredEntityController extends AbstractController
         }
 
         return new JsonResponse($res);
+    }
+
+    public function getSingleValue(Request $request)
+    {
+        $entity_alias = $request->get('entity_alias');
+        $parent_id    = $request->get('parent_id');
+
+        if (!isset($this->filteredValues[$entity_alias])) {
+            throw new \InvalidArgumentException(sprintf('Entity alias "%s" is not configured in dependent_filtered_values.', $entity_alias));
+        }
+
+        $valueConfig = $this->filteredValues[$entity_alias];
+
+        if ($valueConfig['role'] !== 'IS_AUTHENTICATED_ANONYMOUSLY'){
+            $this->denyAccessUnlessGranted($valueConfig['role']);
+        }
+
+        $qb = $this->em
+            ->getRepository($valueConfig['class'])
+            ->createQueryBuilder('e')
+            ->where('e.' . $valueConfig['parent_property'] . ' = :parent_id')
+            ->setParameter('parent_id', $parent_id)
+            ->setMaxResults(1);
+
+        if (null !== $valueConfig['callback']) {
+            $repository = $qb->getEntityManager()->getRepository($valueConfig['class']);
+
+            if (!method_exists($repository, $valueConfig['callback'])) {
+                throw new \InvalidArgumentException(sprintf('Callback function "%s" in Repository "%s" does not exist.', $valueConfig['callback'], get_class($repository)));
+            }
+
+            call_user_func(array($repository, $valueConfig['callback']), $qb, $parent_id);
+        }
+
+        $results = $qb->getQuery()->getResult();
+
+        if (empty($results)) {
+            return new JsonResponse(['value' => null]);
+        }
+
+        // Get the first result
+        $result = $results[0];
+
+        // Extract value using property
+        if ($valueConfig['property']) {
+            $getter = $this->getGetterName($valueConfig['property']);
+            $value = $result->$getter();
+        } else {
+            // Default: convert entity to string
+            $value = (string)$result;
+        }
+
+        return new JsonResponse([
+            'value' => $value
+        ]);
     }
 
     private function getGetterName($property)

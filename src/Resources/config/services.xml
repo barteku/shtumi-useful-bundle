@@ -28,6 +28,11 @@
             <argument type="service" id="service_container"/>
         </service>
 
+        <service id="shtumi.useful.type.dependent_filtered_value" class="Shtumi\UsefulBundle\Form\Type\DependentFilteredValueType">
+            <tag name="form.type" alias="shtumi_dependent_filtered_value"/>
+            <argument type="service" id="parameter_bag"/>
+        </service>
+
         <service id="shtumi.useful.type.ajax_file" class="Shtumi\UsefulBundle\Form\Type\AjaxFileType">
             <tag name="form.type" alias="shtumi_ajaxfile"/>
             <argument type="service" id="service_container"/>
