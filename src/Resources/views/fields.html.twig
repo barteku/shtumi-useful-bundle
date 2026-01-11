@@ -220,55 +220,98 @@
 
 {% block shtumi_dependent_filtered_value_widget %}
 
-    <input {{ block('widget_attributes') }} type="text" class="form-control">
+    {{ form_widget(form) }}
 
-    <img src='{{ asset('bundles/shtumiuseful/images/ajax-loader.gif' ) }}' id='loader_{{ form.vars.id }}' style='display: none;'>
     <script type="text/javascript">
         jQuery(function(){
             {% if parent_field_view is defined and parent_field_view is not null %}
-                {% set parent_form = parent_field_view %}
+            {% set parent_form = parent_field_view %}
             {% else %}
-                {% set parent_form = form.parent.offsetGet( parent_field ) %}
+            {% set parent_form = form.parent.offsetGet( parent_field ) %}
             {% endif %}
 
-            var inputElement = jQuery("#{{ form.vars.id }}");
-            var loaderElement = jQuery("#loader_{{ form.vars.id }}");
+            var parent_id = "{{ parent_form.vars.id }}";
+            var value_field_id = "{{ form.vars.id }}";
+            var parent = null;
 
-            jQuery("#{{ parent_form.vars.id }}").change( function() {
-                var parentValue = jQuery(this).val();
-                
-                if (!parentValue) {
-                    inputElement.val('');
+            // Function to find and initialize parent field
+            function initParentField() {
+                // Find parent field - could be a regular select, Select2, or autocomplete
+                if(jQuery('#'+parent_id).length){
+                    parent = jQuery('#'+parent_id);
+                }else if(jQuery('#'+parent_id+'_autocomplete_input').length){
+                    parent = jQuery('#'+parent_id+'_autocomplete_input');
+                }
+
+                if (!parent || !parent.length) {
+                    // Parent not found yet, try again after a short delay
+                    setTimeout(initParentField, 100);
                     return;
                 }
 
-                loaderElement.show();
-                jQuery.ajax({
-                    type: "POST",
-                    data: {
-                        parent_id: parentValue,
-                        entity_alias: "{{ entity_alias }}"
-                    },
-                    url:"{{ path('shtumi_dependent_filtered_value') }}",
-                    success: function(response){
-                        if (response.value !== null && response.value !== undefined) {
-                            inputElement.val(response.value);
-                        } else {
-                            inputElement.val('');
-                        }
-                        loaderElement.hide();
-                    },
-                    error: function(xhr, ajaxOptions, thrownError){
-                        inputElement.val('');
-                        loaderElement.hide();
-                    }
-                });
-            });
+                // Function to fetch and update the value
+                function updateValue() {
+                    var parentValue = parent.val();
 
-            // Trigger on page load if parent has a value
-            if (jQuery("#{{ parent_form.vars.id }}").val()) {
-                jQuery("#{{ parent_form.vars.id }}").trigger('change');
+                    if (!parentValue || parentValue === '') {
+                        jQuery('#' + value_field_id).val('');
+                        return;
+                    }
+
+                    jQuery.ajax({
+                        type: "POST",
+                        url: "{{ path('shtumi_dependent_filtered_value') }}",
+                        data: {
+                            parent_id: parentValue,
+                            entity_alias: "{{ entity_alias }}"
+                        },
+                        dataType: 'json',
+                        success: function(response) {
+                            if (response && response.value !== null && response.value !== undefined) {
+                                jQuery('#' + value_field_id).val(response.value);
+                            } else {
+                                jQuery('#' + value_field_id).val('');
+                            }
+                        },
+                        error: function(xhr, ajaxOptions, thrownError) {
+                            console.error('Error fetching dependent filtered value:', thrownError);
+                            jQuery('#' + value_field_id).val('');
+                        }
+                    });
+                }
+
+                // Wait a bit for Select2 to initialize if it's a Select2 field
+                setTimeout(function() {
+                    // Check if parent is a Select2 field
+                    var isSelect2 = parent.hasClass('select2-hidden-accessible') ||
+                        (typeof jQuery.fn.select2 !== 'undefined' && parent.data('select2'));
+
+                    if (isSelect2) {
+                        // Parent is Select2 - listen to Select2 change events
+                        parent.on('select2:select select2:clear', function() {
+                            updateValue();
+                        });
+                    } else {
+                        // Parent is a regular select or input - listen to change event
+                        parent.on('change', function() {
+                            updateValue();
+                        });
+                    }
+
+                    // Also listen to the underlying select element's change event (for Select2)
+                    parent.on('change', function() {
+                        updateValue();
+                    });
+
+                    // Trigger initial update if parent has a value
+                    if (parent.val()) {
+                        updateValue();
+                    }
+                }, 200);
             }
+
+            // Start initialization
+            initParentField();
         });
     </script>
 
