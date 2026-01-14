@@ -220,7 +220,10 @@
 
 {% block shtumi_dependent_filtered_value_widget %}
 
-    {{ form_widget(form) }}
+    {{ form_widget(form, { 'attr': attr|merge({
+        'data-max-value': form.vars.attr['data-max-value']|default(''),
+        'data-preserve-value': form.vars.attr['data-preserve-value']|default('true')
+    }) }) }}
 
     <script type="text/javascript">
         jQuery(function(){
@@ -233,6 +236,12 @@
             var parent_id = "{{ parent_form.vars.id }}";
             var value_field_id = "{{ form.vars.id }}";
             var parent = null;
+            var valueField = jQuery('#' + value_field_id);
+            var initialValue = valueField.val();
+            var hasInitialValue = initialValue !== '' && initialValue !== null && initialValue !== undefined && parseFloat(initialValue) > 0;
+            var preserveValue = valueField.data('preserve-value') !== false && valueField.data('preserve-value') !== 'false';
+            var initialParentValue = null;
+            var isInitialized = false;
 
             // Function to find and initialize parent field
             function initParentField() {
@@ -250,11 +259,31 @@
                 }
 
                 // Function to fetch and update the value
-                function updateValue() {
+                function updateValue(forceUpdate) {
                     var parentValue = parent.val();
+                    var currentValue = jQuery('#' + value_field_id).val();
+
+                    // If this is just initialization and we have a saved value, don't overwrite
+                    if (!isInitialized && hasInitialValue && preserveValue) {
+                        isInitialized = true;
+                        initialParentValue = parentValue;
+                        return;
+                    }
+
+                    // If parent value hasn't changed from initial, don't update
+                    if (!forceUpdate && initialParentValue !== null && parentValue === initialParentValue && hasInitialValue) {
+                        return;
+                    }
+
+                    // If preserve mode is on and field has a value and not forced, don't overwrite
+                    if (preserveValue && !forceUpdate && currentValue !== '' && currentValue !== null && parseFloat(currentValue) > 0) {
+                        return;
+                    }
 
                     if (!parentValue || parentValue === '') {
-                        jQuery('#' + value_field_id).val('');
+                        if (!preserveValue || !currentValue) {
+                            jQuery('#' + value_field_id).val('');
+                        }
                         return;
                     }
 
@@ -268,7 +297,18 @@
                         dataType: 'json',
                         success: function(response) {
                             if (response && response.value !== null && response.value !== undefined) {
-                                jQuery('#' + value_field_id).val(response.value);
+                                var newValue = parseFloat(response.value);
+                                var maxValue = valueField.data('max-value');
+
+                                // Apply max value constraint if set
+                                if (maxValue !== '' && maxValue !== undefined && maxValue !== null) {
+                                    maxValue = parseFloat(maxValue);
+                                    if (!isNaN(maxValue) && !isNaN(newValue) && newValue > maxValue) {
+                                        newValue = maxValue;
+                                    }
+                                }
+
+                                jQuery('#' + value_field_id).val(newValue);
                             } else {
                                 jQuery('#' + value_field_id).val('');
                             }
@@ -280,34 +320,61 @@
                     });
                 }
 
+                // Function to validate max value on blur/change
+                function validateMaxValue() {
+                    var currentValue = parseFloat(jQuery('#' + value_field_id).val());
+                    var maxValue = valueField.data('max-value');
+
+                    if (maxValue !== '' && maxValue !== undefined && maxValue !== null) {
+                        maxValue = parseFloat(maxValue);
+                        if (!isNaN(maxValue) && !isNaN(currentValue) && currentValue > maxValue) {
+                            jQuery('#' + value_field_id).val(maxValue);
+                        }
+                    }
+                }
+
+                // Add blur event to validate max value when user edits manually
+                jQuery('#' + value_field_id).on('blur change', validateMaxValue);
+
                 // Wait a bit for Select2 to initialize if it's a Select2 field
                 setTimeout(function() {
+                    // Store the initial parent value before any changes
+                    initialParentValue = parent.val();
+
                     // Check if parent is a Select2 field
                     var isSelect2 = parent.hasClass('select2-hidden-accessible') ||
                         (typeof jQuery.fn.select2 !== 'undefined' && parent.data('select2'));
 
                     if (isSelect2) {
                         // Parent is Select2 - listen to Select2 change events
-                        parent.on('select2:select select2:clear', function() {
-                            updateValue();
+                        // Use select2:select for actual user selections (not initialization)
+                        parent.on('select2:select', function(e) {
+                            // Only update if this is a real user selection (not same as initial)
+                            if (parent.val() !== initialParentValue) {
+                                updateValue(true);
+                                initialParentValue = parent.val(); // Update initial value
+                            }
+                        });
+                        parent.on('select2:clear', function() {
+                            jQuery('#' + value_field_id).val('');
+                            initialParentValue = null;
                         });
                     } else {
                         // Parent is a regular select or input - listen to change event
-                        parent.on('change', function() {
-                            updateValue();
+                        parent.on('change.dependent-value-user', function() {
+                            if (parent.val() !== initialParentValue) {
+                                updateValue(true);
+                                initialParentValue = parent.val();
+                            }
                         });
                     }
 
-                    // Also listen to the underlying select element's change event (for Select2)
-                    parent.on('change', function() {
-                        updateValue();
-                    });
-
-                    // Trigger initial update if parent has a value
-                    if (parent.val()) {
-                        updateValue();
+                    // Mark as initialized and only trigger initial update if field is empty
+                    isInitialized = true;
+                    if (parent.val() && !hasInitialValue) {
+                        updateValue(false);
                     }
-                }, 200);
+                }, 300);
             }
 
             // Start initialization
