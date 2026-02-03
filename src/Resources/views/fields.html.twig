@@ -439,13 +439,30 @@
     <div id="files" class="files"></div>
 
     <script>
-
         (function(){
+            'use strict';
+            
+            // Wait for jQuery and fileupload plugin
+            function waitForDeps(callback) {
+                var attempts = 0;
+                function check() {
+                    attempts++;
+                    if (typeof jQuery !== 'undefined' && typeof jQuery.fn !== 'undefined' && typeof jQuery.fn.fileupload !== 'undefined') {
+                        callback();
+                    } else if (attempts < 100) {
+                        setTimeout(check, 100);
+                    } else {
+                        console.error('jQuery File Upload plugin not available for shtumi_ajaxfile_widget');
+                    }
+                }
+                check();
+            }
+            
+            waitForDeps(function() {
+                var files_list = [];
 
-            var files_list = [];
-
-            jQuery('#{{ uploader_id }}')
-                .fileupload({
+                jQuery('#{{ uploader_id }}')
+                    .fileupload({
                     url: '{{ path('shtumi_ajaxfileupload') }}',
                     dataType: 'json',
                     autoUpload: true,
@@ -520,7 +537,418 @@
                 })
                 .prop('disabled', !jQuery.support.fileInput)
                         .parent().addClass(jQuery.support.fileInput ? undefined : 'disabled');
+            });
         }());
     </script>
 
 {% endblock shtumi_ajaxfile_widget %}
+
+{% block shtumi_ajax_media_widget %}
+
+    <style type="text/css">@import "{{ asset('bundles/shtumiuseful/css/jquery-file-upload/jquery.fileupload.css') }}";</style>
+
+    <script type="text/javascript" src="{{ asset('bundles/shtumiuseful/js/jquery-file-upload/jquery.fileupload.js') }}"></script>
+    <script type="text/javascript" src="{{ asset('bundles/shtumiuseful/js/jquery-file-upload/jquery.fileupload-process.js') }}"></script>
+    <script type="text/javascript" src="{{ asset('bundles/shtumiuseful/js/jquery-file-upload/jquery.fileupload-validate.js') }}"></script>
+
+    <div class="shtumi-ajax-media-upload">
+        {% if value is not empty and value.id is defined %}
+            <div class="existing-media" style="margin-bottom: 10px;">
+                <div class="media-preview">
+                    {% if value.providerReference is defined and value.providerReference %}
+                        {% if value.contentType is defined and 'image' in value.contentType %}
+                            {% set preview_url = path('admin_app_sonatamediamedia_preview', {'id' : value.id} ) %}
+                            <img src="{{ preview_url }}" class="img-responsive" style="max-height: 100px; margin-bottom: 5px;"/>
+                        {% endif %}
+                        <div>
+                            <strong>{{ value.name|default('Plik') }}</strong>
+                            <a href="{{ path('admin_app_sonatamediamedia_download', {'id' : value.id} ) }}" target="_blank" class="btn btn-xs btn-default">
+                                <i class="glyphicon glyphicon-download"></i> Pobierz
+                            </a>
+                            <button type="button" class="btn btn-xs btn-danger remove-media" data-media-id="{{ value.id }}">
+                                <i class="glyphicon glyphicon-remove"></i> Usuń
+                            </button>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="upload-section">
+            <div>
+                <span class="btn btn-success fileinput-button">
+                    <i class="glyphicon glyphicon-plus"></i>
+                    <span>Wybierz plik do przesłania...</span>
+                    {% set uploader_id = id ~ '_uploader' %}
+                    <input id="{{ uploader_id }}" name="file" type="file"{% if multiple %} multiple{% endif %}>
+                </span>
+            </div>
+
+            <div class="upload-info" style="display: none; margin-top: 10px;">
+                <div class="file-name" style="margin-bottom: 5px; font-weight: bold;"></div>
+                <div class="progress" style="margin-top: 10px;">
+                    <div class="progress-bar progress-bar-striped active" role="progressbar" style="width: 0%; min-width: 2em; background-color: #6c757d;">
+                        <span class="progress-text">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="upload-status" style="margin-top: 10px;"></div>
+        </div>
+
+        <input {{ block('widget_attributes') }} type="hidden" value="{% if value is not empty and value.id is defined %}{{ value.id }}{% endif %}">
+    </div>
+
+    <script>
+        // Immediately wrap in IIFE to prevent any code from executing before dependencies are ready
+        (function() {
+            'use strict';
+            
+            // Wait for jQuery and fileupload plugin to be loaded
+            function waitForDependencies(callback, maxAttempts) {
+                maxAttempts = maxAttempts || 100; // Try for up to 10 seconds (100 * 100ms)
+                var attempts = 0;
+                
+                function check() {
+                    attempts++;
+                    var $ = window.jQuery || window.$;
+                    
+                    // Check if jQuery is loaded and has fn property
+                    if (!$ || typeof $ !== 'function' || typeof $.fn === 'undefined') {
+                        if (attempts < maxAttempts) {
+                            setTimeout(check, 100);
+                            return;
+                        }
+                        console.error('jQuery is required for ajax media upload');
+                        return;
+                    }
+                    
+                    // Check if fileupload plugin is loaded
+                    if (typeof $.fn.fileupload === 'undefined') {
+                        if (attempts < maxAttempts) {
+                            setTimeout(check, 100);
+                            return;
+                        }
+                        console.error('jQuery File Upload plugin is not loaded. Make sure jquery.fileupload.js is loaded before this script.');
+                        return;
+                    }
+                    
+                    // Dependencies are ready, call the callback
+                    callback();
+                }
+                
+                // Start checking immediately
+                check();
+            }
+            
+            function initUploader() {
+                try {
+                    // Ensure jQuery is available (use $ or jQuery)
+                    var $ = window.jQuery || window.$;
+                    if (!$ || typeof $ !== 'function') {
+                        console.error('jQuery is required for ajax media upload');
+                        return;
+                    }
+                    
+                    // Check if fileupload plugin is loaded
+                    if (typeof $.fn === 'undefined' || typeof $.fn.fileupload === 'undefined') {
+                        console.error('jQuery File Upload plugin is not loaded');
+                        return;
+                    }
+                    
+                    var $uploader = $('#{{ uploader_id }}');
+                    if ($uploader.length === 0) {
+                        console.error('Upload element not found: #{{ uploader_id }}');
+                        return;
+                    }
+                    
+                    // Check if already initialized to prevent double initialization
+                    if ($uploader.data('fileupload-initialized')) {
+                        return;
+                    }
+                    $uploader.data('fileupload-initialized', true);
+                    
+                    var $hiddenInput = $('#{{ id }}');
+                    var $uploadSection = $uploader.closest('.upload-section');
+                    var $uploadInfo = $uploadSection.find('.upload-info');
+                    var $fileName = $uploadSection.find('.file-name');
+                    var $progress = $uploadSection.find('.progress');
+                    var $progressBar = $progress.find('.progress-bar');
+                    var $progressText = $progressBar.find('.progress-text');
+                    var $status = $uploadSection.find('.upload-status');
+                    var $existingMedia = $uploader.closest('.shtumi-ajax-media-upload').find('.existing-media');
+                    
+                    // Find form and submit buttons
+                    var $form = $uploader.closest('form');
+                    var $submitButtons = $form.find('button[type="submit"], input[type="submit"]');
+                    var isUploading = false;
+
+                // Helper function to format file size
+                function formatFileSize(bytes) {
+                    if (bytes === 0) return '0 Bytes';
+                    var k = 1024;
+                    var sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                    var i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+                }
+
+                // Chunk size: ~25MB per chunk (should upload in <30s on most connections)
+                var CHUNK_SIZE = 25 * 1024 * 1024; // 25 MB
+                var MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+                
+                $uploader.fileupload({
+                    url: '{{ path('shtumi_ajaxfileupload') }}',
+                    dataType: 'json',
+                    autoUpload: true,
+                    maxFileSize: MAX_FILE_SIZE,
+                    formData: {
+                        context: '{{ context }}',
+                        provider: '{{ provider }}'
+                    },
+                    sequentialUploads: true,
+                    limitConcurrentUploads: 1,
+                    progressInterval: 50, // Update progress every 50ms for smoother updates
+                    forceIframeTransport: false, // Force XHR for real progress support
+                    singleFileUploads: true, // Upload one file at a time for better progress tracking
+                    xhrFields: {
+                        // Ensure we can track progress
+                        withCredentials: false
+                    }
+                })
+                .on('fileuploadadd', function (e, data) {
+                $status.html('');
+                
+                // Store original files for chunked uploads
+                if (data.files && data.files[0]) {
+                    var file = data.files[0];
+                    data.originalFiles = [file];
+                    
+                    // Show file name and progress bar immediately
+                    $fileName.text(file.name + ' (' + formatFileSize(file.size) + ')');
+                    $uploadInfo.show();
+                    $progressBar.css('width', '0%').attr('aria-valuenow', 0);
+                    $progressText.text('0%');
+                    
+                    // Disable form submission
+                    isUploading = true;
+                    $submitButtons.prop('disabled', true).addClass('disabled');
+                    $status.html('<span class="text-info"><i class="glyphicon glyphicon-upload"></i> Przesyłanie pliku...</span>');
+                    
+                    // Check if file needs chunking
+                    if (file.size > CHUNK_SIZE) {
+                        // File is large, we'll handle chunking manually
+                        data.chunked = true;
+                        data.chunkIndex = 0;
+                        data.totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+                        data.uploadId = 'upload_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    } else {
+                        data.chunked = false;
+                    }
+                }
+                })
+                .on('fileuploadstart', function (e, data) {
+                    // Reset progress when upload actually starts
+                    $progressBar.css('width', '0%').attr('aria-valuenow', 0);
+                    $progressText.text('0%');
+                })
+                .on('fileuploadsubmit', function (e, data) {
+                    // Add chunking parameters if needed
+                    if (data.chunked) {
+                        var file = data.files[0];
+                        var start = data.chunkIndex * CHUNK_SIZE;
+                        var end = Math.min(start + CHUNK_SIZE, file.size);
+                        var chunk = file.slice(start, end);
+                        
+                        // Replace the file with the chunk
+                        data.files = [chunk];
+                        data.formData = $.extend({}, data.formData, {
+                            chunk: true,
+                            chunkIndex: data.chunkIndex,
+                            totalChunks: data.totalChunks,
+                            uploadId: data.uploadId,
+                            fileName: file.name,
+                            fileSize: file.size,
+                            fileType: file.type
+                        });
+                    }
+                })
+                .on('fileuploaddone', function (e, data) {
+                    if (data.chunked && data.result && data.result.files && data.result.files[0]) {
+                        var file = data.originalFiles[0];
+                        data.chunkIndex++;
+                        
+                        if (data.chunkIndex < data.totalChunks) {
+                            // More chunks to upload
+                            $progressBar.css('width', ((data.chunkIndex / data.totalChunks) * 100) + '%')
+                                .attr('aria-valuenow', (data.chunkIndex / data.totalChunks) * 100);
+                            $progressText.text(Math.round((data.chunkIndex / data.totalChunks) * 100) + '%');
+                            
+                            // Upload next chunk
+                            data.submit();
+                            return;
+                        } else {
+                            // All chunks uploaded, finalize
+                            $.ajax({
+                            url: '{{ path('shtumi_ajaxfileupload') }}',
+                            type: 'POST',
+                            data: {
+                                finalize: true,
+                                uploadId: data.uploadId,
+                                fileName: file.name,
+                                fileSize: file.size,
+                                fileType: file.type,
+                                context: '{{ context }}',
+                                provider: '{{ provider }}'
+                            },
+                            success: function(response) {
+                                if (response.files && response.files[0] && response.files[0].id) {
+                                    var file = response.files[0];
+                                    $hiddenInput.val(file.id);
+                                    
+                                    var previewHtml = '<div class="media-preview" style="margin-bottom: 10px;">';
+                                    if (file.url && file.type && file.type.indexOf('image/') === 0) {
+                                        previewHtml += '<img src="' + file.url + '" class="img-responsive" style="max-height: 100px; margin-bottom: 5px;"/>';
+                                    }
+                                    previewHtml += '<div><strong>' + (file.name || 'Plik') + '</strong> ';
+                                    if (file.url) {
+                                        previewHtml += '<a href="' + file.url + '" target="_blank" class="btn btn-xs btn-default"><i class="glyphicon glyphicon-download"></i> Pobierz</a> ';
+                                    }
+                                    previewHtml += '<button type="button" class="btn btn-xs btn-danger remove-media" data-media-id="' + file.id + '"><i class="glyphicon glyphicon-remove"></i> Usuń</button></div></div>';
+                                    
+                                    if ($existingMedia.length) {
+                                        $existingMedia.html(previewHtml);
+                                    } else {
+                                        $existingMedia = $('<div class="existing-media" style="margin-bottom: 10px;">' + previewHtml + '</div>');
+                                        $uploader.closest('.shtumi-ajax-media-upload').prepend($existingMedia);
+                                    }
+                                    
+                                    $status.html('<span class="text-success"><i class="glyphicon glyphicon-ok"></i> Plik został przesłany pomyślnie</span>');
+                                }
+                                // Re-enable form submission
+                                isUploading = false;
+                                $submitButtons.prop('disabled', false).removeClass('disabled');
+                                $uploadInfo.hide();
+                            },
+                            error: function() {
+                                // Re-enable form submission on error
+                                isUploading = false;
+                                $submitButtons.prop('disabled', false).removeClass('disabled');
+                                $uploadInfo.hide();
+                                $status.html('<span class="text-danger"><i class="glyphicon glyphicon-exclamation-sign"></i> Błąd podczas finalizacji pliku</span>');
+                            }
+                            });
+                            return;
+                        }
+                    }
+                    
+                    // Original non-chunked handling
+                    // Show 100% on completion
+                    $progressBar.css('width', '100%').attr('aria-valuenow', 100);
+                    $progressText.text('100%');
+                    
+                    $.each(data.result.files, function (index, file) {
+                        if (file.id && !file.error) {
+                            // Success - update hidden input with media ID
+                            $hiddenInput.val(file.id);
+                            
+                            // Update or create preview
+                            var previewHtml = '<div class="media-preview" style="margin-bottom: 10px;">';
+                            if (file.url) {
+                                if (file.type && file.type.indexOf('image/') === 0) {
+                                    previewHtml += '<img src="' + file.url + '" class="img-responsive" style="max-height: 100px; margin-bottom: 5px;"/>';
+                                }
+                            }
+                            previewHtml += '<div><strong>' + (file.name || 'Plik') + '</strong> ';
+                            if (file.url) {
+                                previewHtml += '<a href="' + file.url + '" target="_blank" class="btn btn-xs btn-default"><i class="glyphicon glyphicon-download"></i> Pobierz</a> ';
+                            }
+                            previewHtml += '<button type="button" class="btn btn-xs btn-danger remove-media" data-media-id="' + file.id + '"><i class="glyphicon glyphicon-remove"></i> Usuń</button></div></div>';
+                            
+                            if ($existingMedia.length) {
+                                $existingMedia.html(previewHtml);
+                            } else {
+                                $existingMedia = $('<div class="existing-media" style="margin-bottom: 10px;">' + previewHtml + '</div>');
+                                $uploader.closest('.shtumi-ajax-media-upload').prepend($existingMedia);
+                            }
+                            
+                            $status.html('<span class="text-success"><i class="glyphicon glyphicon-ok"></i> Plik został przesłany pomyślnie</span>');
+                        } else if (file.error) {
+                            $status.html('<span class="text-danger"><i class="glyphicon glyphicon-exclamation-sign"></i> ' + file.error + '</span>');
+                        }
+                    });
+                    
+                    // Re-enable form submission
+                    isUploading = false;
+                    $submitButtons.prop('disabled', false).removeClass('disabled');
+                    
+                    // Hide progress after a short delay
+                    setTimeout(function() {
+                        $uploadInfo.hide();
+                    }, 500);
+                })
+                .on('fileuploadsend', function (e, data) {
+                    // Reset progress when upload starts
+                    $progressBar.css('width', '0%').attr('aria-valuenow', 0);
+                    $progressText.text('0%');
+                })
+                .on('fileuploadprogressall', function (e, data) {
+                    // Update progress bar with real upload progress
+                    if (!isUploading) return;
+                    
+                    var loaded = data.loaded || (data.originalEvent && data.originalEvent.loaded);
+                    var total = data.total || (data.originalEvent && data.originalEvent.total);
+                    
+                    if (loaded && total && total > 0) {
+                        var progress = Math.min(99, Math.max(0, (loaded / total) * 100));
+                        $progressBar.css('width', progress + '%').attr('aria-valuenow', progress);
+                        $progressText.text(Math.round(progress) + '%');
+                    }
+                })
+                .on('fileuploadfail', function (e, data) {
+                    $uploadInfo.hide();
+                    $status.html('<span class="text-danger"><i class="glyphicon glyphicon-exclamation-sign"></i> Przesyłanie pliku nie powiodło się</span>');
+                    // Re-enable form submission on error
+                    isUploading = false;
+                    $submitButtons.prop('disabled', false).removeClass('disabled');
+                });
+                
+                // Prevent form submission while uploading
+                $form.on('submit', function(e) {
+                if (isUploading) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    $status.html('<span class="text-warning"><i class="glyphicon glyphicon-exclamation-sign"></i> Proszę poczekać na zakończenie przesyłania pliku</span>');
+                    return false;
+                }
+                });
+
+                // Handle remove button
+                $(document).on('click', '.remove-media', function() {
+                    if (confirm('Czy na pewno chcesz usunąć ten plik?')) {
+                        $hiddenInput.val('');
+                        $existingMedia.remove();
+                        $status.html('<span class="text-info">Plik został usunięty</span>');
+                    }
+                });
+                } catch (error) {
+                    console.error('Error initializing ajax media upload:', error);
+                }
+            }
+            
+            // Wait for dependencies before initializing
+            waitForDependencies(function() {
+                // Check if DOM is ready
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', function() {
+                        // Small delay to ensure DOM is fully ready
+                        setTimeout(initUploader, 100);
+                    });
+                } else {
+                    // DOM already loaded, initialize immediately
+                    setTimeout(initUploader, 100);
+                }
+            });
+        })();
+    </script>
+
+{% endblock shtumi_ajax_media_widget %}

@@ -66,8 +66,15 @@
             <argument type="service" id="parameter_bag"></argument>
         </service>
 
-        <service id="Shtumi\UsefulBundle\Controller\AjaxFileController" public="true" autowire="true">
+        <service id="Shtumi\UsefulBundle\Controller\AjaxFileController" public="true">
+            <argument type="service" id="sonata.media.manager.media"/>
+            <argument type="service" id="sonata.media.pool"/>
+        </service>
 
+        <service id="shtumi.useful.type.ajax_media" class="Shtumi\UsefulBundle\Form\Type\AjaxMediaType" autowire="false">
+            <tag name="form.type" alias="shtumi_ajax_media"/>
+            <argument type="service" id="sonata.media.manager.media"/>
+            <argument type="service" id="doctrine.orm.entity_manager"/>
         </service>
 
         <service id="Shtumi\UsefulBundle\Controller\Select2EntityController" public="true" autowire="true">
