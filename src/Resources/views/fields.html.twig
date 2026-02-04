@@ -891,15 +891,40 @@
                     $progressBar.css('width', '0%').attr('aria-valuenow', 0);
                     $progressText.text('0%');
                 })
+                .on('fileuploadprogress', function (e, data) {
+                    // Update progress bar with real upload progress for individual file
+                    // This event fires more reliably than fileuploadprogressall
+                    if (data.loaded !== undefined && data.total !== undefined && data.total > 0) {
+                        var progress;
+                        
+                        // For chunked uploads, calculate overall progress based on original file
+                        if (data.chunked && data.originalFiles && data.originalFiles[0] && data.chunkIndex !== undefined) {
+                            var file = data.originalFiles[0];
+                            var chunkIndex = data.chunkIndex || 0;
+                            var chunkSize = CHUNK_SIZE;
+                            var currentChunkStart = chunkIndex * chunkSize;
+                            var currentChunkSize = Math.min(chunkSize, file.size - currentChunkStart);
+                            
+                            // Calculate progress within current chunk (0-100% of chunk)
+                            var chunkProgress = data.loaded / data.total; // data.total is the chunk size
+                            
+                            // Calculate overall progress: completed chunks + current chunk progress
+                            var overallLoaded = currentChunkStart + (chunkProgress * currentChunkSize);
+                            progress = Math.min(99, Math.max(0, (overallLoaded / file.size) * 100));
+                        } else {
+                            // Regular upload - use direct progress
+                            progress = Math.min(99, Math.max(0, (data.loaded / data.total) * 100));
+                        }
+                        
+                        $progressBar.css('width', progress + '%').attr('aria-valuenow', progress);
+                        $progressText.text(Math.round(progress) + '%');
+                    }
+                })
                 .on('fileuploadprogressall', function (e, data) {
-                    // Update progress bar with real upload progress
-                    if (!isUploading) return;
-                    
-                    var loaded = data.loaded || (data.originalEvent && data.originalEvent.loaded);
-                    var total = data.total || (data.originalEvent && data.originalEvent.total);
-                    
-                    if (loaded && total && total > 0) {
-                        var progress = Math.min(99, Math.max(0, (loaded / total) * 100));
+                    // Update progress bar with real upload progress for all files
+                    // Fallback to this if fileuploadprogress doesn't fire
+                    if (data.loaded !== undefined && data.total !== undefined && data.total > 0) {
+                        var progress = Math.min(99, Math.max(0, (data.loaded / data.total) * 100));
                         $progressBar.css('width', progress + '%').attr('aria-valuenow', progress);
                         $progressText.text(Math.round(progress) + '%');
                     }
