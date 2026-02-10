@@ -60,16 +60,13 @@ class AjaxFileController
                 $media->setContentType($mimeType);
 
                 // If it's an image, use image provider
-                if (strpos($mimeType, 'image/') === 0 && $providerName === 'sonata.media.provider.file') {
-                    // Check if image provider is available in context
+                if (strpos($mimeType, 'image/') === 0 && $providerName === 'sonata.media.provider.file'
+                    && $this->mediaPool->hasContext($context)) {
+                    // Sonata Pool::getContext returns array with 'providers' key
                     $contextConfig = $this->mediaPool->getContext($context);
-                    if ($contextConfig) {
-                        /** @var array<string, array|string>|iterable $providers */
-                        $providers = $contextConfig->getProviders();
-                        $providersArray = is_array($providers) ? $providers : iterator_to_array($providers);
-                        if (in_array('sonata.media.provider.image', $providersArray, true)) {
-                            $media->setProviderName('sonata.media.provider.image');
-                        }
+                    $providersArray = $contextConfig['providers'] ?? [];
+                    if (\in_array('sonata.media.provider.image', $providersArray, true)) {
+                        $media->setProviderName('sonata.media.provider.image');
                     }
                 }
 
@@ -174,16 +171,13 @@ class AjaxFileController
             $media->setProviderName($providerName);
             $media->setContentType($fileType);
             
-            // If it's an image, use image provider
-            if (strpos($fileType, 'image/') === 0 && $providerName === 'sonata.media.provider.file') {
+            // If it's an image, use image provider (Sonata Pool::getContext returns array)
+            if (strpos($fileType, 'image/') === 0 && $providerName === 'sonata.media.provider.file'
+                && $this->mediaPool->hasContext($context)) {
                 $contextConfig = $this->mediaPool->getContext($context);
-                if ($contextConfig) {
-                    /** @var array<string, array|string>|iterable $providers */
-                    $providers = $contextConfig->getProviders();
-                    $providersArray = is_array($providers) ? $providers : iterator_to_array($providers);
-                    if (in_array('sonata.media.provider.image', $providersArray, true)) {
-                        $media->setProviderName('sonata.media.provider.image');
-                    }
+                $providersArray = $contextConfig['providers'] ?? [];
+                if (\in_array('sonata.media.provider.image', $providersArray, true)) {
+                    $media->setProviderName('sonata.media.provider.image');
                 }
             }
             
