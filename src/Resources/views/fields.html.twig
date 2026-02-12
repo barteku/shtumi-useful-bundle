@@ -552,20 +552,20 @@
     <script type="text/javascript" src="{{ asset('bundles/shtumiuseful/js/jquery-file-upload/jquery.fileupload-validate.js') }}"></script>
 
     <div class="shtumi-ajax-media-upload">
-        {% if value is not empty and value.id is defined %}
+        {% if media is not empty and media.id is defined %}
             <div class="existing-media" style="margin-bottom: 10px;">
                 <div class="media-preview">
-                    {% if value.providerReference is defined and value.providerReference %}
-                        {% if value.contentType is defined and 'image' in value.contentType %}
-                            {% set preview_url = path('admin_app_sonatamediamedia_preview', {'id' : value.id} ) %}
+                    {% if media.providerReference is defined and media.providerReference %}
+                        {% if media.contentType is defined and 'image' in media.contentType %}
+                            {% set preview_url = path('admin_app_sonatamediamedia_preview', {'id' : media.id} ) %}
                             <img src="{{ preview_url }}" class="img-responsive" style="max-height: 100px; margin-bottom: 5px;"/>
                         {% endif %}
                         <div>
-                            <strong>{{ value.name|default('Plik') }}</strong>
-                            <a href="{{ path('admin_app_sonatamediamedia_download', {'id' : value.id} ) }}" target="_blank" class="btn btn-xs btn-default">
+                            <strong>{{ media.name|default('Plik') }}</strong>
+                            <a href="{{ path('admin_app_sonatamediamedia_download', {'id' : media.id} ) }}" target="_blank" class="btn btn-xs btn-default">
                                 <i class="glyphicon glyphicon-download"></i> Pobierz
                             </a>
-                            <button type="button" class="btn btn-xs btn-danger remove-media" data-media-id="{{ value.id }}">
+                            <button type="button" class="btn btn-xs btn-danger remove-media" data-media-id="{{ media.id }}">
                                 <i class="glyphicon glyphicon-remove"></i> Usuń
                             </button>
                         </div>
@@ -596,7 +596,7 @@
             <div class="upload-status" style="margin-top: 10px;"></div>
         </div>
 
-        <input {{ block('widget_attributes') }} type="hidden" value="{% if value is not empty and value.id is defined %}{{ value.id }}{% endif %}">
+        <input {{ block('widget_attributes') }} type="hidden" value="{% if value is not empty %}{{ value }}{% endif %}">
     </div>
 
     <script>
@@ -947,8 +947,9 @@
                 }
                 });
 
-                // Handle remove button
-                $(document).on('click', '.remove-media', function() {
+                // Handle remove button (scope to this widget so multiple widgets work correctly)
+                var $container = $uploader.closest('.shtumi-ajax-media-upload');
+                $container.on('click', '.remove-media', function() {
                     if (confirm('Czy na pewno chcesz usunąć ten plik?')) {
                         $hiddenInput.val('');
                         $existingMedia.remove();
