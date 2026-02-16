@@ -693,8 +693,8 @@
                     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
                 }
 
-                // Use 1 MB chunks to keep each request short and reduce timeout risk.
-                var CHUNK_SIZE = 1 * 1024 * 1024; // 1 MB
+                // Configurable chunk size from AjaxMediaType option (chunk_size_mb).
+                var CHUNK_SIZE = {{ chunk_size_mb|default(1) }} * 1024 * 1024;
                 var MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB
                 var MAX_CHUNK_RETRIES = 3;
                 var CHUNK_RETRY_DELAY_MS = 1200;

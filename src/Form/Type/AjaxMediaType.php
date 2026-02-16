@@ -9,6 +9,7 @@ use Symfony\Component\Form\FormEvent;
 use Symfony\Component\Form\FormEvents;
 use Symfony\Component\Form\FormInterface;
 use Symfony\Component\Form\FormView;
+use Symfony\Component\OptionsResolver\Options;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 use Shtumi\UsefulBundle\Form\DataTransformer\AjaxMediaTransformer;
 use Sonata\MediaBundle\Model\MediaManagerInterface;
@@ -34,10 +35,16 @@ class AjaxMediaType extends AbstractType
             'multiple' => false,
             'context' => 'default',
             'provider' => 'sonata.media.provider.file',
+            'chunk_size_mb' => 1,
         ]);
 
         $resolver->setAllowedTypes('context', 'string');
         $resolver->setAllowedTypes('provider', 'string');
+        $resolver->setAllowedTypes('chunk_size_mb', ['int', 'string']);
+        $resolver->setNormalizer('chunk_size_mb', static function (Options $options, $value): int {
+            $normalized = (int) $value;
+            return $normalized > 0 ? $normalized : 1;
+        });
     }
 
     public function getParent(): string
@@ -103,6 +110,7 @@ class AjaxMediaType extends AbstractType
         $view->vars['context'] = $options['context'];
         $view->vars['provider'] = $options['provider'];
         $view->vars['multiple'] = $options['multiple'];
+        $view->vars['chunk_size_mb'] = $options['chunk_size_mb'];
         // Pass the media entity so the template can show existing file (preview, name, etc.)
         // The transformed value is the id string; the template needs the object for display.
         $view->vars['media'] = $form->getData();
