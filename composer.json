@@ -1,5 +1,6 @@
 {
     "name": "barteku/shtumi-useful-bundle",
+    "version": "1.5.6",
     "type": "symfony-bundle",
     "description": "Symfony ShtumiUsefulBundle - bart edit",
     "keywords": ["Ajax Autocomplete form type", "Dependent filtered form type", "daterange", "shtumi"],

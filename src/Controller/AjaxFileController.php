@@ -2,6 +2,7 @@
 
 namespace Shtumi\UsefulBundle\Controller;
 
+use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -11,6 +12,13 @@ use Sonata\MediaBundle\Provider\Pool;
 class AjaxFileController
 {
     private const UPLOAD_TMP_ROOT = '/media_uploads';
+
+    private const MIME_TO_EXTENSION = [
+        'application/pdf' => 'pdf',
+        'image/png' => 'png',
+        'image/jpeg' => 'jpeg',
+        'image/gif' => 'gif',
+    ];
 
     private MediaManagerInterface $mediaManager;
     private Pool $mediaPool;
@@ -50,15 +58,18 @@ class AjaxFileController
             }
 
             try {
+                // Ensure file has extension matching actual content (magic bytes) to prevent PDF saved as .png
+                $fileToUse = $this->ensureCorrectExtension($file) ?? $file;
+
                 $media = $this->mediaManager->create();
-                $media->setBinaryContent($file);
+                $media->setBinaryContent($fileToUse);
                 $media->setEnabled(false); // Mark as temporary
                 $media->setName($file->getClientOriginalName());
                 $media->setContext($context);
                 $media->setProviderName($providerName);
                 
-                // Determine content type
-                $mimeType = $file->getMimeType();
+                // Determine content type from the file we're actually storing
+                $mimeType = $fileToUse->getMimeType();
                 $media->setContentType($mimeType);
 
                 // If it's an image, use image provider
@@ -207,20 +218,36 @@ class AjaxFileController
         }
         
         fclose($finalFile);
-        
+
+        // Ensure extension matches actual content (magic bytes) to prevent PDF saved as .png
+        $contentMime = $this->getMimeFromMagicBytes($finalFilePath);
+        $effectiveMime = $contentMime ?? $fileType;
+        $effectivePath = $finalFilePath;
+        $tempFixedPath = null;
+        if ($contentMime !== null && $contentMime !== $fileType) {
+            $ext = self::MIME_TO_EXTENSION[$contentMime] ?? null;
+            if ($ext !== null) {
+                $tempFixedPath = sys_get_temp_dir() . '/shtumi_upload_' . uniqid('', true) . '.' . $ext;
+                if (copy($finalFilePath, $tempFixedPath)) {
+                    $effectivePath = $tempFixedPath;
+                    $effectiveMime = $contentMime;
+                }
+            }
+        }
+
         // Create media entity from reassembled file
         try {
             $media = $this->mediaManager->create();
-            $media->setBinaryContent(new \Symfony\Component\HttpFoundation\File\File($finalFilePath));
+            $media->setBinaryContent(new File($effectivePath));
             $media->setEnabled(false); // Mark as temporary
             $safeFileName = basename(str_replace("\0", '', $fileName));
             $media->setName($safeFileName !== '' ? $safeFileName : 'upload.bin');
             $media->setContext($context);
             $media->setProviderName($providerName);
-            $media->setContentType($fileType);
+            $media->setContentType($effectiveMime);
             
             // If it's an image, use image provider (Sonata Pool::getContext returns array)
-            if (strpos($fileType, 'image/') === 0 && $providerName === 'sonata.media.provider.file'
+            if (strpos($effectiveMime, 'image/') === 0 && $providerName === 'sonata.media.provider.file'
                 && $this->mediaPool->hasContext($context)) {
                 $contextConfig = $this->mediaPool->getContext($context);
                 $providersArray = $contextConfig['providers'] ?? [];
@@ -228,17 +255,20 @@ class AjaxFileController
                     $media->setProviderName('sonata.media.provider.image');
                 }
             }
-            
+
             // Save the media
             $this->mediaManager->save($media);
-            
+
             // Get the provider to generate URLs
             $provider = $this->mediaPool->getProvider($media->getProviderName());
-            
+
             // Clean up temp files
             @unlink($finalFilePath);
+            if ($tempFixedPath !== null && file_exists($tempFixedPath)) {
+                @unlink($tempFixedPath);
+            }
             @rmdir($tempDir);
-            
+
             return new JsonResponse([
                 'files' => [[
                     'id' => $media->getId(),
@@ -246,14 +276,17 @@ class AjaxFileController
                     'url' => $provider->generatePublicUrl($media, 'reference'),
                     'path' => $media->getProviderReference(),
                     'size' => $fileSize,
-                    'type' => $fileType,
+                    'type' => $effectiveMime,
                 ]]
             ]);
         } catch (\Exception $e) {
             // Clean up on error
             @unlink($finalFilePath);
+            if ($tempFixedPath !== null && file_exists($tempFixedPath)) {
+                @unlink($tempFixedPath);
+            }
             @rmdir($tempDir);
-            
+
             return new JsonResponse([
                 'files' => [[
                     'name' => $fileName,
@@ -261,5 +294,81 @@ class AjaxFileController
                 ]]
             ], 500);
         }
+    }
+
+    /**
+     * Ensure file has extension matching actual content (magic bytes).
+     * Prevents PDF saved as .png and vice versa when MIME detection is wrong.
+     */
+    private function ensureCorrectExtension(UploadedFile $file): ?File
+    {
+        $path = $file->getPathname();
+        if (!is_readable($path)) {
+            return null;
+        }
+
+        $contentMime = $this->getMimeFromMagicBytes($path);
+        if ($contentMime === null) {
+            return null;
+        }
+
+        try {
+            $detectedMime = $file->getMimeType();
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        if ($contentMime === $detectedMime) {
+            return null;
+        }
+
+        $extension = self::MIME_TO_EXTENSION[$contentMime] ?? null;
+        if ($extension === null) {
+            return null;
+        }
+
+        $tempPath = sys_get_temp_dir() . '/shtumi_upload_' . uniqid('', true) . '.' . $extension;
+        if (copy($path, $tempPath) !== true) {
+            return null;
+        }
+
+        register_shutdown_function(static function () use ($tempPath): void {
+            if (file_exists($tempPath)) {
+                @unlink($tempPath);
+            }
+        });
+
+        return new File($tempPath);
+    }
+
+    private function getMimeFromMagicBytes(string $path): ?string
+    {
+        $handle = @fopen($path, 'rb');
+        if (!$handle) {
+            return null;
+        }
+        try {
+            $header = fread($handle, 12);
+        } finally {
+            fclose($handle);
+        }
+        if (strlen($header) < 5) {
+            return null;
+        }
+
+        if (str_starts_with($header, '%PDF')) {
+            return 'application/pdf';
+        }
+        if (str_starts_with($header, "\x89PNG\r\n\x1a\n")) {
+            return 'image/png';
+        }
+        if (str_starts_with($header, "\xff\xd8\xff")) {
+            return 'image/jpeg';
+        }
+        if (str_starts_with($header, 'GIF87a') || str_starts_with($header, 'GIF89a')) {
+            return 'image/gif';
+        }
+
+        return null;
     }
 }
