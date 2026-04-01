@@ -1042,3 +1042,318 @@
     </script>
 
 {% endblock shtumi_ajax_media_widget %}
+
+{% block multiple_ajax_media_widget %}
+
+    <style type="text/css">@import "{{ asset('bundles/shtumiuseful/css/jquery-file-upload/jquery.fileupload.css') }}";</style>
+    <script type="text/javascript" src="{{ asset('bundles/shtumiuseful/js/jquery-file-upload/jquery.fileupload.js') }}"></script>
+    <script type="text/javascript" src="{{ asset('bundles/shtumiuseful/js/jquery-file-upload/jquery.fileupload-process.js') }}"></script>
+    <script type="text/javascript" src="{{ asset('bundles/shtumiuseful/js/jquery-file-upload/jquery.fileupload-validate.js') }}"></script>
+
+    {% set widget_id = id ~ '_multi_upload' %}
+    {% set uploader_input_id = id ~ '_file_input' %}
+
+    <div id="{{ widget_id }}" class="multiple-ajax-media-upload">
+
+        <div class="media-grid" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
+            {% for item in existing_media %}
+                <div class="media-item" data-media-id="{{ item.id }}" style="position: relative; border: 1px solid #ddd; border-radius: 4px; padding: 5px; width: 140px; text-align: center;">
+                    {% if item.contentType is defined and item.contentType and 'image' in item.contentType %}
+                        {% set preview_url = path('admin_app_sonatamediamedia_preview', {'id' : item.id}) %}
+                        <img src="{{ preview_url }}" style="max-width: 120px; max-height: 90px; display: block; margin: 0 auto 5px;"/>
+                    {% endif %}
+                    <div style="font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ item.name|default('Plik') }}">{{ item.name|default('Plik') }}</div>
+                    <button type="button" class="btn btn-xs btn-danger multi-media-remove" data-media-id="{{ item.id }}" style="position: absolute; top: 2px; right: 2px; padding: 1px 4px; font-size: 10px;">
+                        <i class="glyphicon glyphicon-remove"></i>
+                    </button>
+                </div>
+            {% endfor %}
+        </div>
+
+        <div class="upload-rows"></div>
+
+        <div class="drop-zone" style="border: 2px dashed #ccc; border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; background: #fafafa; transition: border-color 0.2s, background 0.2s;">
+            <i class="glyphicon glyphicon-cloud-upload" style="font-size: 28px; color: #aaa; display: block; margin-bottom: 8px;"></i>
+            <span style="color: #888;">Przeciagnij pliki lub kliknij aby wybrac</span>
+            <input id="{{ uploader_input_id }}" type="file" multiple accept="{{ accept }}" style="display: none;">
+        </div>
+
+        <div class="upload-errors" style="margin-top: 8px;"></div>
+
+        <input {{ block('widget_attributes') }} type="hidden" value="{% if value is not empty %}{{ value }}{% endif %}">
+    </div>
+
+    <script>
+    (function() {
+        'use strict';
+
+        function waitForDependencies(callback, maxAttempts) {
+            maxAttempts = maxAttempts || 100;
+            var attempts = 0;
+            function check() {
+                attempts++;
+                var $ = window.jQuery || window.$;
+                if (!$ || typeof $ !== 'function' || typeof $.fn === 'undefined') {
+                    if (attempts < maxAttempts) { setTimeout(check, 100); return; }
+                    console.error('jQuery is required for multiple ajax media upload');
+                    return;
+                }
+                if (typeof $.fn.fileupload === 'undefined') {
+                    if (attempts < maxAttempts) { setTimeout(check, 100); return; }
+                    console.error('jQuery File Upload plugin is not loaded');
+                    return;
+                }
+                callback();
+            }
+            check();
+        }
+
+        function initMultiUploader() {
+            var $ = window.jQuery || window.$;
+            var $widget = $('#{{ widget_id }}');
+            if ($widget.length === 0 || $widget.data('multi-upload-init')) return;
+            $widget.data('multi-upload-init', true);
+
+            var $hiddenInput = $widget.find('input[type="hidden"]');
+            var $fileInput = $('#{{ uploader_input_id }}');
+            var $dropZone = $widget.find('.drop-zone');
+            var $uploadRows = $widget.find('.upload-rows');
+            var $mediaGrid = $widget.find('.media-grid');
+            var $errors = $widget.find('.upload-errors');
+            var $form = $widget.closest('form');
+            var $submitButtons = $form.find('button[type="submit"], input[type="submit"]');
+
+            var MAX_FILES = {{ max_files|default(20) }};
+            var MAX_CONCURRENT = 3;
+            var uploadUrl = '{{ path('shtumi_ajaxfileupload') }}';
+            var acceptFilter = '{{ accept }}';
+
+            var mediaIds = [];
+            var activeUploads = 0;
+            var uploadQueue = [];
+
+            var currentValue = $hiddenInput.val();
+            if (currentValue && currentValue.length > 0) {
+                mediaIds = currentValue.split(',').filter(function(id) { return id.trim() !== ''; });
+            }
+
+            function syncHiddenInput() {
+                $hiddenInput.val(mediaIds.join(','));
+            }
+
+            function updateSubmitState() {
+                if (activeUploads > 0) {
+                    $submitButtons.prop('disabled', true).addClass('disabled');
+                } else {
+                    $submitButtons.prop('disabled', false).removeClass('disabled');
+                }
+            }
+
+            function formatFileSize(bytes) {
+                if (bytes === 0) return '0 B';
+                var k = 1024;
+                var sizes = ['B', 'KB', 'MB', 'GB'];
+                var i = Math.floor(Math.log(bytes) / Math.log(k));
+                return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+            }
+
+            function isImageFile(file) {
+                if (acceptFilter === 'image/*') {
+                    return file.type && file.type.indexOf('image/') === 0;
+                }
+                return true;
+            }
+
+            var previewRouteBase = '{{ path('admin_app_sonatamediamedia_preview', {'id' : '__ID__'}) }}';
+
+            function addMediaItem(file) {
+                mediaIds.push(String(file.id));
+                syncHiddenInput();
+
+                var previewUrl = previewRouteBase.replace('__ID__', file.id);
+                var html = '<div class="media-item" data-media-id="' + file.id + '" style="position: relative; border: 1px solid #ddd; border-radius: 4px; padding: 5px; width: 140px; text-align: center;">';
+                if (file.type && file.type.indexOf('image/') === 0) {
+                    html += '<img src="' + previewUrl + '" style="max-width: 120px; max-height: 90px; display: block; margin: 0 auto 5px;"/>';
+                }
+                html += '<div style="font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="' + (file.name || 'Plik') + '">' + (file.name || 'Plik') + '</div>';
+                html += '<button type="button" class="btn btn-xs btn-danger multi-media-remove" data-media-id="' + file.id + '" style="position: absolute; top: 2px; right: 2px; padding: 1px 4px; font-size: 10px;"><i class="glyphicon glyphicon-remove"></i></button>';
+                html += '</div>';
+
+                $mediaGrid.append(html);
+            }
+
+            function createUploadRow(file) {
+                var rowId = 'upload_row_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+                var html = '<div id="' + rowId + '" class="upload-row" style="margin-bottom: 8px; padding: 8px; border: 1px solid #eee; border-radius: 4px;">';
+                html += '<div style="display: flex; align-items: center; gap: 10px;">';
+                html += '<span class="file-label" style="flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + file.name + ' <small>(' + formatFileSize(file.size) + ')</small></span>';
+                html += '<span class="upload-row-status" style="font-size: 11px; color: #888;">Oczekiwanie...</span>';
+                html += '</div>';
+                html += '<div class="progress" style="margin: 6px 0 0; height: 16px;">';
+                html += '<div class="progress-bar progress-bar-striped active" role="progressbar" style="width: 0%; min-width: 2em; background-color: #6c757d;">';
+                html += '<span class="progress-text" style="font-size: 10px;">0%</span>';
+                html += '</div></div></div>';
+
+                $uploadRows.append(html);
+                return rowId;
+            }
+
+            function setRowProgress(rowId, pct) {
+                var $row = $('#' + rowId);
+                var normalized = Math.min(100, Math.max(0, pct));
+                $row.find('.progress-bar').css('width', normalized + '%');
+                $row.find('.progress-text').text(Math.round(normalized) + '%');
+            }
+
+            function setRowStatus(rowId, html) {
+                $('#' + rowId).find('.upload-row-status').html(html);
+            }
+
+            function setRowDone(rowId) {
+                var $row = $('#' + rowId);
+                $row.find('.progress-bar').removeClass('active progress-bar-striped').css('background-color', '#5cb85c');
+                setTimeout(function() { $row.fadeOut(300, function() { $row.remove(); }); }, 1500);
+            }
+
+            function setRowError(rowId, msg) {
+                var $row = $('#' + rowId);
+                $row.find('.progress-bar').removeClass('active progress-bar-striped').css('background-color', '#d9534f').css('width', '100%');
+                setRowStatus(rowId, '<span class="text-danger">' + msg + '</span>');
+                setTimeout(function() { $row.fadeOut(500, function() { $row.remove(); }); }, 5000);
+            }
+
+            function processQueue() {
+                while (activeUploads < MAX_CONCURRENT && uploadQueue.length > 0) {
+                    var task = uploadQueue.shift();
+                    startUpload(task.file, task.rowId);
+                }
+            }
+
+            function startUpload(file, rowId) {
+                activeUploads++;
+                updateSubmitState();
+                setRowStatus(rowId, '<span class="text-info">Przesylanie...</span>');
+
+                var formData = new FormData();
+                formData.append('file', file, file.name);
+                formData.append('context', '{{ context }}');
+                formData.append('provider', '{{ provider }}');
+
+                $.ajax({
+                    url: uploadUrl,
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    timeout: 120000,
+                    xhr: function() {
+                        var xhr = $.ajaxSettings.xhr();
+                        if (xhr && xhr.upload) {
+                            xhr.upload.addEventListener('progress', function(evt) {
+                                if (evt.lengthComputable) {
+                                    setRowProgress(rowId, Math.min(99, (evt.loaded / evt.total) * 100));
+                                }
+                            });
+                        }
+                        return xhr;
+                    },
+                    success: function(response) {
+                        if (response.files && response.files[0] && response.files[0].id && !response.files[0].error) {
+                            setRowProgress(rowId, 100);
+                            setRowStatus(rowId, '<span class="text-success">Gotowe</span>');
+                            addMediaItem(response.files[0]);
+                            setRowDone(rowId);
+                        } else {
+                            var errMsg = (response.files && response.files[0] && response.files[0].error) || 'Blad przesylania';
+                            setRowError(rowId, errMsg);
+                        }
+                        activeUploads--;
+                        updateSubmitState();
+                        processQueue();
+                    },
+                    error: function() {
+                        setRowError(rowId, 'Blad przesylania pliku');
+                        activeUploads--;
+                        updateSubmitState();
+                        processQueue();
+                    }
+                });
+            }
+
+            function handleFiles(files) {
+                $errors.html('');
+                var currentCount = mediaIds.length + activeUploads + uploadQueue.length;
+                var accepted = [];
+
+                for (var i = 0; i < files.length; i++) {
+                    if (currentCount + accepted.length >= MAX_FILES) {
+                        $errors.html('<span class="text-warning">Maksymalna liczba plikow: ' + MAX_FILES + '</span>');
+                        break;
+                    }
+                    if (!isImageFile(files[i])) {
+                        $errors.html('<span class="text-danger">Dozwolone sa tylko pliki graficzne (obrazy)</span>');
+                        continue;
+                    }
+                    accepted.push(files[i]);
+                }
+
+                for (var j = 0; j < accepted.length; j++) {
+                    var rowId = createUploadRow(accepted[j]);
+                    uploadQueue.push({ file: accepted[j], rowId: rowId });
+                }
+                processQueue();
+            }
+
+            $dropZone.on('click', function(e) {
+                if (e.target === $fileInput[0]) return;
+                $fileInput[0].click();
+            });
+            $fileInput.on('change', function() {
+                if (this.files && this.files.length > 0) {
+                    handleFiles(this.files);
+                    this.value = '';
+                }
+            });
+
+            $dropZone.on('dragover dragenter', function(e) {
+                e.preventDefault(); e.stopPropagation();
+                $(this).css({ 'border-color': '#5cb85c', 'background': '#f0fff0' });
+            });
+            $dropZone.on('dragleave drop', function(e) {
+                e.preventDefault(); e.stopPropagation();
+                $(this).css({ 'border-color': '#ccc', 'background': '#fafafa' });
+            });
+            $dropZone.on('drop', function(e) {
+                var dt = e.originalEvent.dataTransfer;
+                if (dt && dt.files && dt.files.length > 0) {
+                    handleFiles(dt.files);
+                }
+            });
+
+            $widget.on('click', '.multi-media-remove', function() {
+                var mid = String($(this).data('media-id'));
+                mediaIds = mediaIds.filter(function(id) { return id !== mid; });
+                syncHiddenInput();
+                $(this).closest('.media-item').remove();
+            });
+
+            $form.on('submit', function(e) {
+                if (activeUploads > 0) {
+                    e.preventDefault(); e.stopPropagation();
+                    $errors.html('<span class="text-warning">Poczekaj na zakonczenie przesylania plikow</span>');
+                    return false;
+                }
+            });
+        }
+
+        waitForDependencies(function() {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() { setTimeout(initMultiUploader, 100); });
+            } else {
+                setTimeout(initMultiUploader, 100);
+            }
+        });
+    })();
+    </script>
+
+{% endblock multiple_ajax_media_widget %}
