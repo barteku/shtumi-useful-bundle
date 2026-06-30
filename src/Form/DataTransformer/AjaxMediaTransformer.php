@@ -3,6 +3,7 @@
 namespace Shtumi\UsefulBundle\Form\DataTransformer;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Shtumi\UsefulBundle\Form\Type\AjaxMediaType;
 use Symfony\Component\Form\DataTransformerInterface;
 use Symfony\Component\Form\Exception\TransformationFailedException;
 use Symfony\Component\Form\Exception\UnexpectedTypeException;
@@ -43,7 +44,7 @@ class AjaxMediaTransformer implements DataTransformerInterface
      */
     public function reverseTransform($value)
     {
-        if ('' === $value || null === $value) {
+        if ('' === $value || null === $value || AjaxMediaType::REMOVE_TOKEN === $value) {
             return null;
         }
 

@@ -17,6 +17,13 @@ use Doctrine\ORM\EntityManagerInterface;
 
 class AjaxMediaType extends AbstractType
 {
+    /**
+     * Sentinel value submitted by the widget when the user explicitly removes
+     * the attached file. It lets PRE_SUBMIT tell an intentional removal apart
+     * from an untouched empty field (which must keep the existing media).
+     */
+    public const REMOVE_TOKEN = '__shtumi_media_remove__';
+
     private MediaManagerInterface $mediaManager;
     private EntityManagerInterface $entityManager;
 
@@ -78,6 +85,14 @@ class AjaxMediaType extends AbstractType
         // (e.g. not rendered with value). Preserve the existing media id so we don't lose the file.
         $builder->addEventListener(FormEvents::PRE_SUBMIT, function (FormEvent $event): void {
             $submitted = $event->getData();
+
+            // Explicit removal requested via the widget "Usuń" button: detach the
+            // file instead of restoring it. The transformer maps null to null.
+            if ($submitted === self::REMOVE_TOKEN) {
+                $event->setData(null);
+                return;
+            }
+
             if ($submitted !== null && $submitted !== '') {
                 return;
             }
@@ -111,6 +126,7 @@ class AjaxMediaType extends AbstractType
         $view->vars['provider'] = $options['provider'];
         $view->vars['multiple'] = $options['multiple'];
         $view->vars['chunk_size_mb'] = $options['chunk_size_mb'];
+        $view->vars['remove_token'] = self::REMOVE_TOKEN;
         // Pass the media entity so the template can show existing file (preview, name, etc.)
         // The transformed value is the id string; the template needs the object for display.
         $view->vars['media'] = $form->getData();

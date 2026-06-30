@@ -1015,7 +1015,7 @@
                 var $container = $uploader.closest('.shtumi-ajax-media-upload');
                 $container.on('click', '.remove-media', function() {
                     if (confirm('Czy na pewno chcesz usunąć ten plik?')) {
-                        $hiddenInput.val('');
+                        $hiddenInput.val('{{ remove_token }}');
                         $existingMedia.remove();
                         $status.html('<span class="text-info">Plik został usunięty</span>');
                     }
