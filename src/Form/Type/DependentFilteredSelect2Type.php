@@ -30,7 +30,7 @@ class DependentFilteredSelect2Type extends AbstractType
             'entity_alias'      => null,
             'parent_field'      => null,
             'compound'          => false,
-            'multiple'          => 0
+            'multiple'          => false
         ));
     }
 
@@ -51,7 +51,7 @@ class DependentFilteredSelect2Type extends AbstractType
         $builder->addViewTransformer(new EntityToSelect2ValueTransformer(
             $this->container->get('doctrine')->getManager(),
             $options['class'],
-            $options['multiple']
+            (bool) $options['multiple']
         ), true);
 
         $builder->setAttribute("parent_field", $options['parent_field']);
@@ -76,7 +76,7 @@ class DependentFilteredSelect2Type extends AbstractType
         $view->vars['entity_alias'] = $form->getConfig()->getAttribute('entity_alias');
         $view->vars['no_result_msg'] = $form->getConfig()->getAttribute('no_result_msg');
         $view->vars['empty_value'] = $form->getConfig()->getAttribute('empty_value');
-        $view->vars['multiple'] = $form->getConfig()->getAttribute('multiple', 0);
+        $view->vars['multiple'] = (bool) $form->getConfig()->getAttribute('multiple', false);
         
         // Find parent field in form hierarchy
         $parentField = $form->getConfig()->getAttribute('parent_field');

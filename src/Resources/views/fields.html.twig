@@ -142,7 +142,7 @@
 
 {% block shtumi_dependent_filtered_select2_widget %}
 
-    <select {{ block('widget_attributes') }} ></select>
+    <select {{ block('widget_attributes') }}{% if multiple %} multiple="multiple"{% endif %}>{% if not multiple %}<option></option>{% endif %}</select>
 
     <script type="text/javascript">
         jQuery(function(){
@@ -161,6 +161,8 @@
 
                 var parent_id = "{{ parent_form.vars.id }}";
                 var parent = null;
+                var $field = jQuery("#{{ form.vars.id }}");
+                var isMultiple = {{ multiple ? 'true' : 'false' }};
 
                 if(jQuery('#'+parent_id).length){
                     parent = jQuery('#'+parent_id);
@@ -169,10 +171,10 @@
                 }
 
                 {% if multiple %}
-                    jQuery("#{{ form.vars.id }}").attr('name', jQuery("#{{ form.vars.id }}").attr('name') + '[]');
+                    $field.attr('name', $field.attr('name') + '[]');
                 {% endif %}
 
-                jQuery("#{{ form.vars.id }}").select2({
+                $field.select2({
                     placeholder: "{{ empty_value }}",
                     minimumInputLength: 0,
                     ajax: {
@@ -181,7 +183,7 @@
                         data: function (term, page) {
                             return {
                                 term: term,
-                                parent_id: parent.val(),
+                                parent_id: parent ? parent.val() : null,
                                 entity_alias: "{{ entity_alias }}"
                             };
                         },
@@ -189,7 +191,7 @@
                             return { results: data };
                         },
                     },
-                    multiple: '{{ multiple }}'
+                    multiple: isMultiple
                 });
 
 
@@ -197,17 +199,25 @@
 
                 if(Array.isArray(data)) {
                     $.each(data, function (k,el) {
+                        if (el.id === null || typeof el.id === 'undefined') {
+                            return;
+                        }
                         var newOption = new Option(el.text, el.id, true, true);
-                        jQuery("#{{ form.vars.id }}").append(newOption).trigger('change');
+                        $field.append(newOption).trigger('change');
                     });
-                } else if(typeof data.id !== 'undefined'){
+                } else if(data && typeof data.id !== 'undefined' && data.id !== null){
                     var newOption = new Option(data.text, data.id, true, true);
-                    jQuery("#{{ form.vars.id }}").append(newOption).trigger('change');
+                    $field.append(newOption).trigger('change');
                 }
 
                 if (parent && parent.length) {
-                    parent.change(function(){
-                        jQuery("#{{ form.vars.id }}").select2('data', null);
+                    var initialParentVal = parent.val();
+                    parent.on('change', function(){
+                        if (parent.val() === initialParentVal) {
+                            return;
+                        }
+                        initialParentVal = parent.val();
+                        $field.val(null).trigger('change');
                     });
                 }
             }
